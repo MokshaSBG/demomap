@@ -3,58 +3,158 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Go + PostGIS Web Map</title>
-    <link rel="stylesheet" href="style.css" />
-    <link
-            rel="stylesheet"
-            href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-            integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-            crossorigin=""
-    />
-    <script
-            src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-            crossorigin=""
-    ></script>
+    <title>📍 Map Explorer</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-<div id="app">
-    <aside id="sidebar">
-        <h1>📍 Map Explorer</h1>
-        <div class="controls">
-            <div class="search-container">
-                <input
-                        type="text"
-                        id="searchInput"
-                        placeholder="Search locations..."
-                />
+
+<!-- ===== AUTH MODAL ===== -->
+<div id="authModal" class="modal">
+    <div class="modal-content auth-modal">
+        <h2 id="authTitle">Login</h2>
+        <form id="authForm">
+            <div id="registerFields" style="display:none;">
+                <input type="text" id="regUsername" placeholder="Username" required />
+                <input type="email" id="regEmail" placeholder="Email" required />
             </div>
+            <input type="text" id="loginUsername" placeholder="Username" required />
+            <input type="password" id="loginPassword" placeholder="Password" required />
+            <button type="submit" id="authSubmitBtn" class="btn-primary">Login</button>
+        </form>
+        <p id="authSwitch">
+            Don't have an account? <a href="#" id="switchToRegister">Register</a>
+        </p>
+        <div id="authError" class="error-msg"></div>
+    </div>
+</div>
+
+<!-- ===== MAIN APP ===== -->
+<div id="app" style="display:none;">
+    <!-- Sidebar -->
+    <aside id="sidebar">
+        <div class="sidebar-header">
+            <h1><i class="fas fa-map-pin"></i> Map Explorer</h1>
+            <button id="logoutBtn" class="logout-btn">
+                <i class="fas fa-sign-out-alt"></i>
+            </button>
+        </div>
+
+        <div class="user-info">
+            <i class="fas fa-user-circle"></i>
+            <span id="currentUser">User</span>
+        </div>
+
+        <div class="controls">
+            <button id="addPlaceBtn" class="btn-primary">
+                <i class="fas fa-plus-circle"></i> Add Place
+            </button>
+
+            <div class="search-container">
+                <i class="fas fa-search"></i>
+                <input type="text" id="searchInput" placeholder="Search places..." />
+            </div>
+
             <div class="filter-container">
                 <select id="categoryFilter">
                     <option value="all">All Categories</option>
                 </select>
             </div>
+
             <div class="nearby-container">
-                <button id="findNearbyBtn">📍 Find Nearby</button>
-                <input
-                        type="number"
-                        id="radiusInput"
-                        placeholder="Radius (km)"
-                        value="5"
-                        min="1"
-                        max="50"
-                />
+                <button id="findNearbyBtn" class="btn-secondary">
+                    <i class="fas fa-location-dot"></i> Find Nearby
+                </button>
+                <input type="number" id="radiusInput" placeholder="Radius" value="5" min="1" max="50" />
             </div>
         </div>
-        <div id="location-list">
-            <p class="loading-msg">Loading locations...</p>
+
+        <div id="place-list">
+            <div class="loading-spinner">
+                <i class="fas fa-spinner fa-spin"></i> Loading places...
+            </div>
         </div>
     </aside>
+
+    <!-- Map -->
     <main id="map-container">
         <div id="map"></div>
     </main>
 </div>
 
-<script src="app.js"></script>
+<!-- ===== PLACE MODAL ===== -->
+<div id="placeModal" class="modal">
+    <div class="modal-content">
+        <h2 id="placeModalTitle">Add New Place</h2>
+        <form id="placeForm">
+            <input type="text" id="placeName" placeholder="Place Name *" required />
+            <select id="placeCategory" required>
+                <option value="">Select Category</option>
+                <option value="restaurant">Restaurant</option>
+                <option value="cafe">Cafe</option>
+                <option value="park">Park</option>
+                <option value="landmark">Landmark</option>
+                <option value="museum">Museum</option>
+                <option value="shopping">Shopping</option>
+                <option value="hotel">Hotel</option>
+                <option value="other">Other</option>
+            </select>
+            <textarea id="placeDescription" placeholder="Description"></textarea>
+            <input type="text" id="placeAddress" placeholder="Address" />
+            <input type="text" id="placePhone" placeholder="Phone" />
+            <input type="url" id="placeWebsite" placeholder="Website" />
+            <div class="location-picker">
+                <p><i class="fas fa-map-marker-alt"></i> Click on the map to set location</p>
+                <div class="coords-display">
+                    <span>Lat: <span id="selectedLat">-</span></span>
+                    <span>Lng: <span id="selectedLng">-</span></span>
+                </div>
+            </div>
+            <button type="submit" class="btn-primary">Save Place</button>
+            <button type="button" class="btn-secondary" id="closePlaceModal">Cancel</button>
+        </form>
+    </div>
+</div>
+
+<!-- ===== RATING MODAL ===== -->
+<div id="ratingModal" class="modal">
+    <div class="modal-content small-modal">
+        <h2>Rate This Place</h2>
+        <div class="star-rating">
+            <i class="fas fa-star" data-rating="1"></i>
+            <i class="fas fa-star" data-rating="2"></i>
+            <i class="fas fa-star" data-rating="3"></i>
+            <i class="fas fa-star" data-rating="4"></i>
+            <i class="fas fa-star" data-rating="5"></i>
+        </div>
+        <textarea id="reviewText" placeholder="Write a review..."></textarea>
+        <button id="submitRatingBtn" class="btn-primary">Submit Rating</button>
+        <button id="closeRatingModal" class="btn-secondary">Cancel</button>
+    </div>
+</div>
+
+<!-- ===== PHOTO MODAL ===== -->
+<div id="photoModal" class="modal">
+    <div class="modal-content small-modal">
+        <h2>Upload Photos</h2>
+        <input type="file" id="photoInput" accept="image/*" multiple />
+        <div id="photoPreview"></div>
+        <button id="uploadPhotosBtn" class="btn-primary">Upload</button>
+        <button id="closePhotoModal" class="btn-secondary">Done</button>
+    </div>
+</div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- Custom JS -->
+<script src="./app.js"></script>
 </body>
 </html>

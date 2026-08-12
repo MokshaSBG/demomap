@@ -1,4 +1,4 @@
--- Connect to the database first
+-- Connect to the db first
 -- psql -U mapuser -d mapdb
 
 -- Enable PostGIS extension (if not already enabled)
