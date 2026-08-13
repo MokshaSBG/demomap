@@ -146,7 +146,11 @@ function initMap() {
 
     state.markersLayer = L.layerGroup().addTo(state.map);
 
+
     state.map.on('click', function(e) {
+        const lat = e.latlng.lat;
+        const lng = e.latlng.lng;
+
         if (document.getElementById('placeModal').classList.contains('active')) {
             state.selectedLat = e.latlng.lat;
             state.selectedLng = e.latlng.lng;
@@ -163,6 +167,9 @@ function initMap() {
                 fillOpacity: 0.3,
                 weight: 3,
             }).addTo(state.map);
+        }else {
+            showAddPlacePopup(lat, lng);
+            //openPlaceModal(null)
         }
     });
 
@@ -175,6 +182,50 @@ function initMap() {
     setTimeout(() => {
         state.map.invalidateSize();
     }, 100);
+}
+
+function showAddPlacePopup(lat, lng) {
+    console.log('📍 Showing add place popup at:', lat, lng);
+
+    // Close any existing popup first
+    state.map.closePopup();
+
+    // Create the popup
+    const popup = L.popup({
+        maxWidth: 300,
+        className: 'add-place-popup',
+        closeButton: true
+    })
+        .setLatLng([lat, lng])
+        .setContent(`
+        <div style="text-align:center;padding:8px;">
+            <p style="margin:8px 0;font-weight:600;">No place found here</p>
+            <button onclick="openPlaceModalWithLocation(${lat}, ${lng})" 
+                    style="padding:6px 16px;background:#4F46E5;color:white;border:none;border-radius:4px;cursor:pointer;">
+                Add Place Here
+            </button>
+        </div>
+    `)
+        .openOn(state.map);
+
+    // Store reference to popup (optional)
+    state.currentPopup = popup;
+}
+
+function openPlaceModalWithLocation(lat, lng) {
+    // Close the popup
+    if (state.currentPopup) {
+        state.map.closePopup(state.currentPopup);
+        state.currentPopup = null;
+    }
+
+    // Set coordinates and open modal
+    state.selectedLat = lat;
+    state.selectedLng = lng;
+    document.getElementById('selectedLat').textContent = lat.toFixed(6);
+    document.getElementById('selectedLng').textContent = lng.toFixed(6);
+
+    openPlaceModal(null);
 }
 
 function updateMap() {
@@ -588,11 +639,11 @@ function openPlaceModal(place = null) {
         }).addTo(state.map);
         state.map.setView([place.latitude, place.longitude], 16);
     } else {
-        document.getElementById('placeForm').reset();
-        document.getElementById('selectedLat').textContent = '-';
-        document.getElementById('selectedLng').textContent = '-';
-        state.selectedLat = null;
-        state.selectedLng = null;
+        //document.getElementById('placeForm').reset();
+        //document.getElementById('selectedLat').textContent = '-';
+        //document.getElementById('selectedLng').textContent = '-';
+        //state.selectedLat = null;
+        //state.selectedLng = null;
         if (state.selectedMarker) {
             state.map.removeLayer(state.selectedMarker);
             state.selectedMarker = null;
