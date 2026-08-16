@@ -67,6 +67,15 @@ func main() {
 	router.PathPrefix("/uploads/").Handler(http.StripPrefix("/uploads/", http.FileServer(http.Dir("./uploads"))))
 	router.PathPrefix("/").Handler(http.FileServer(http.Dir("../frontend")))
 
+	// ============================================
+	// OGC API - Features Routes (Public)
+	// ============================================
+	router.HandleFunc("/", handlers.OGCLandingHandler).Methods("GET")
+	router.HandleFunc("/conformance", handlers.OGCConformanceHandler).Methods("GET")
+	router.HandleFunc("/collections", handlers.OGCCollectionsHandler).Methods("GET")
+	router.HandleFunc("/collections/{collectionId}/items", handlers.OGCItemsHandler).Methods("GET")
+	router.HandleFunc("/collections/{collectionId}/items/{featureId}", handlers.OGCFeatureHandler).Methods("GET")
+
 	// Enable CORS
 	handler := cors.New(cors.Options{
 		AllowedOrigins:   []string{"*"},
