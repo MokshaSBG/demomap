@@ -187,18 +187,20 @@ func OGCItemsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Query features
 	query := fmt.Sprintf(`
-		SELECT 
-			id, user_id, name, category, description, address, phone, website,
-			ST_X(geom) as longitude, ST_Y(geom) as latitude,
-			COALESCE(average_rating, 0) as average_rating,
-			COALESCE(total_ratings, 0) as total_ratings,
-			created_at, updated_at,
-			ST_AsGeoJSON(geom) as geojson
-		FROM places
-		%s
-		ORDER BY created_at DESC
-		LIMIT $%d OFFSET $%d
-	`, whereClause, argIndex, argIndex+1)
+        SELECT 
+            p.id, p.user_id, p.name, p.category, p.description, p.address, p.phone, p.website,
+            ST_X(p.geom) as longitude, ST_Y(p.geom) as latitude,
+            COALESCE(p.average_rating, 0) as average_rating,
+            COALESCE(p.total_ratings, 0) as total_ratings,
+            p.created_at, p.updated_at,
+            ST_AsGeoJSON(p.geom) as geojson,
+            u.username as creator_username
+        FROM places p
+        LEFT JOIN users u ON p.user_id = u.id
+        %s
+        ORDER BY p.created_at DESC
+        LIMIT $%d OFFSET $%d
+    `, whereClause, argIndex, argIndex+1)
 
 	args = append(args, limit, offset)
 

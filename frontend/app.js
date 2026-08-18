@@ -531,6 +531,8 @@ function renderPlaces(places) {
             </div>
             ${place.description ? `<div class="place-description">${escapeHtml(place.description)}</div>` : ''}
             <div class="place-meta">
+                ${place.created_by ? `<div class="place-creator">👤 ${place.created_by}</div>` : ''}
+                ${place.is_owner ? `<span class="owner-badge">Your Place</span>` : ''}
                 ${place.address ? `<span><i class="fas fa-location-dot"></i> ${escapeHtml(place.address)}</span>` : ''}
                 ${place.phone ? `<span><i class="fas fa-phone"></i> ${escapeHtml(place.phone)}</span>` : ''}
             </div>

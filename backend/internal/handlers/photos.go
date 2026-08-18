@@ -58,6 +58,12 @@ func UploadPhotoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	db := db.GetDB()
+	var exists bool
+	err = db.QueryRow(`SELECT EXISTS(SELECT 1 FROM places WHERE id = $1)`, placeID).Scan(&exists)
+	if err != nil || !exists {
+		utils.JSONError(w, http.StatusNotFound, "Place not found")
+		return
+	}
 	var count int
 	db.QueryRow(`SELECT COUNT(*) FROM photos WHERE place_id = $1`, placeID).Scan(&count)
 	isPrimary := count == 0

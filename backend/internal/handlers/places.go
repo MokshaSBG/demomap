@@ -15,43 +15,64 @@ import (
 )
 
 func GetPlacesHandler(w http.ResponseWriter, r *http.Request) {
-	userID := middleware.GetUserID(r)
-
+	// Remove userID filter - show all places
 	db := db.GetDB()
 	query := `
         SELECT 
-            id, user_id, name, category, description, address, phone, website,
-            ST_X(geom) as longitude, ST_Y(geom) as latitude,
-            COALESCE(average_rating, 0) as average_rating,
-            COALESCE(total_ratings, 0) as total_ratings,
-            created_at, updated_at
-        FROM places
-        WHERE user_id = $1
-        ORDER BY created_at DESC
+            p.id, p.user_id, p.name, p.category, p.description, p.address, p.phone, p.website,
+            ST_X(p.geom) as longitude, ST_Y(p.geom) as latitude,
+            COALESCE(p.average_rating, 0) as average_rating,
+            COALESCE(p.total_ratings, 0) as total_ratings,
+            p.created_at, p.updated_at,
+            u.username as creator_username
+        FROM places p
+        LEFT JOIN users u ON p.user_id = u.id
+        ORDER BY p.created_at DESC
     `
 
-	rows, err := db.Query(query, userID)
+	rows, err := db.Query(query)
 	if err != nil {
 		utils.JSONError(w, http.StatusInternalServerError, "Failed to fetch places")
 		return
 	}
 	defer rows.Close()
 
-	places := []models.Place{}
+	places := []map[string]interface{}{}
 	for rows.Next() {
 		var p models.Place
+		var username string
 		err := rows.Scan(
 			&p.ID, &p.UserID, &p.Name, &p.Category, &p.Description,
 			&p.Address, &p.Phone, &p.Website,
 			&p.Longitude, &p.Latitude,
 			&p.AverageRating, &p.TotalRatings,
 			&p.CreatedAt, &p.UpdatedAt,
+			&username,
 		)
 		if err != nil {
 			utils.JSONError(w, http.StatusInternalServerError, "Failed to scan place")
 			return
 		}
-		places = append(places, p)
+
+		// Add creator info to response
+		placeData := map[string]interface{}{
+			"id":             p.ID,
+			"name":           p.Name,
+			"category":       p.Category,
+			"description":    p.Description,
+			"address":        p.Address,
+			"phone":          p.Phone,
+			"website":        p.Website,
+			"longitude":      p.Longitude,
+			"latitude":       p.Latitude,
+			"average_rating": p.AverageRating,
+			"total_ratings":  p.TotalRatings,
+			"created_at":     p.CreatedAt,
+			"updated_at":     p.UpdatedAt,
+			"created_by":     username,
+			"is_owner":       p.UserID == middleware.GetUserID(r), // Add this to check ownership
+		}
+		places = append(places, placeData)
 	}
 
 	utils.JSONResponse(w, http.StatusOK, places)
@@ -99,27 +120,31 @@ func CreatePlaceHandler(w http.ResponseWriter, r *http.Request) {
 func GetPlaceHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	placeID := vars["id"]
-	userID := middleware.GetUserID(r)
+	currentUserID := middleware.GetUserID(r)
 
 	db := db.GetDB()
 	query := `
         SELECT 
-            id, user_id, name, category, description, address, phone, website,
-            ST_X(geom) as longitude, ST_Y(geom) as latitude,
-            COALESCE(average_rating, 0) as average_rating,
-            COALESCE(total_ratings, 0) as total_ratings,
-            created_at, updated_at
-        FROM places
-        WHERE id = $1 AND user_id = $2
+            p.id, p.user_id, p.name, p.category, p.description, p.address, p.phone, p.website,
+            ST_X(p.geom) as longitude, ST_Y(p.geom) as latitude,
+            COALESCE(p.average_rating, 0) as average_rating,
+            COALESCE(p.total_ratings, 0) as total_ratings,
+            p.created_at, p.updated_at,
+            u.username as creator_username
+        FROM places p
+        LEFT JOIN users u ON p.user_id = u.id
+        WHERE p.id = $1
     `
 
 	var p models.Place
-	err := db.QueryRow(query, placeID, userID).Scan(
+	var username string
+	err := db.QueryRow(query, placeID).Scan(
 		&p.ID, &p.UserID, &p.Name, &p.Category, &p.Description,
 		&p.Address, &p.Phone, &p.Website,
 		&p.Longitude, &p.Latitude,
 		&p.AverageRating, &p.TotalRatings,
 		&p.CreatedAt, &p.UpdatedAt,
+		&username,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -130,7 +155,37 @@ func GetPlaceHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	utils.JSONResponse(w, http.StatusOK, p)
+	// Get photos
+	//photos, _ := getPlacePhotos(placeID)
+
+	// Get user's rating (if logged in)
+	var userRating *models.Rating
+	if currentUserID > 0 {
+		//userRating, _ = getUserRating(placeID, currentUserID)
+	}
+
+	response := map[string]interface{}{
+		"id":             p.ID,
+		"user_id":        p.UserID,
+		"name":           p.Name,
+		"category":       p.Category,
+		"description":    p.Description,
+		"address":        p.Address,
+		"phone":          p.Phone,
+		"website":        p.Website,
+		"longitude":      p.Longitude,
+		"latitude":       p.Latitude,
+		"average_rating": p.AverageRating,
+		"total_ratings":  p.TotalRatings,
+		"created_at":     p.CreatedAt,
+		"updated_at":     p.UpdatedAt,
+		"created_by":     username,
+		"is_owner":       p.UserID == currentUserID,
+		//"photos": photos,
+		"user_rating": userRating,
+	}
+
+	utils.JSONResponse(w, http.StatusOK, response)
 }
 
 func UpdatePlaceHandler(w http.ResponseWriter, r *http.Request) {
@@ -202,7 +257,7 @@ func DeletePlaceHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func NearbyPlacesHandler(w http.ResponseWriter, r *http.Request) {
-	userID := middleware.GetUserID(r)
+	// Remove userID filter - show all nearby places
 	latStr := r.URL.Query().Get("lat")
 	lonStr := r.URL.Query().Get("lon")
 	radiusStr := r.URL.Query().Get("radius")
@@ -212,42 +267,29 @@ func NearbyPlacesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	lat, err := strconv.ParseFloat(latStr, 64)
-	if err != nil {
-		utils.JSONError(w, http.StatusBadRequest, "Invalid lat parameter")
-		return
-	}
-
-	lon, err := strconv.ParseFloat(lonStr, 64)
-	if err != nil {
-		utils.JSONError(w, http.StatusBadRequest, "Invalid lon parameter")
-		return
-	}
-
+	lat, _ := strconv.ParseFloat(latStr, 64)
+	lon, _ := strconv.ParseFloat(lonStr, 64)
 	radius := 5.0
 	if radiusStr != "" {
-		radius, err = strconv.ParseFloat(radiusStr, 64)
-		if err != nil {
-			utils.JSONError(w, http.StatusBadRequest, "Invalid radius parameter")
-			return
-		}
+		radius, _ = strconv.ParseFloat(radiusStr, 64)
 	}
 
 	db := db.GetDB()
 	query := `
         SELECT 
-            id, user_id, name, category, description, address, phone, website,
-            ST_X(geom) as longitude, ST_Y(geom) as latitude,
-            COALESCE(average_rating, 0) as average_rating,
-            COALESCE(total_ratings, 0) as total_ratings,
-            ST_Distance(geom, ST_SetSRID(ST_MakePoint($1, $2), 4326)) * 111.319 as distance_km
-        FROM places
-        WHERE user_id = $3
-        AND ST_Distance(geom, ST_SetSRID(ST_MakePoint($1, $2), 4326)) < ($4 / 111.319)
+            p.id, p.user_id, p.name, p.category, p.description, p.address, p.phone, p.website,
+            ST_X(p.geom) as longitude, ST_Y(p.geom) as latitude,
+            COALESCE(p.average_rating, 0) as average_rating,
+            COALESCE(p.total_ratings, 0) as total_ratings,
+            u.username as creator_username,
+            ST_Distance(p.geom, ST_SetSRID(ST_MakePoint($1, $2), 4326)) * 111.319 as distance_km
+        FROM places p
+        LEFT JOIN users u ON p.user_id = u.id
+        WHERE ST_Distance(p.geom, ST_SetSRID(ST_MakePoint($1, $2), 4326)) < ($3 / 111.319)
         ORDER BY distance_km
     `
 
-	rows, err := db.Query(query, lon, lat, userID, radius)
+	rows, err := db.Query(query, lon, lat, radius)
 	if err != nil {
 		utils.JSONError(w, http.StatusInternalServerError, "Failed to find nearby places")
 		return
@@ -256,7 +298,8 @@ func NearbyPlacesHandler(w http.ResponseWriter, r *http.Request) {
 
 	type NearbyPlace struct {
 		models.Place
-		DistanceKm float64 `json:"distance_km"`
+		CreatorUsername string  `json:"created_by"`
+		DistanceKm      float64 `json:"distance_km"`
 	}
 
 	places := []NearbyPlace{}
@@ -267,6 +310,7 @@ func NearbyPlacesHandler(w http.ResponseWriter, r *http.Request) {
 			&p.Address, &p.Phone, &p.Website,
 			&p.Longitude, &p.Latitude,
 			&p.AverageRating, &p.TotalRatings,
+			&p.CreatorUsername,
 			&p.DistanceKm,
 		)
 		if err != nil {
@@ -280,17 +324,14 @@ func NearbyPlacesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetCategoriesHandler(w http.ResponseWriter, r *http.Request) {
-	userID := middleware.GetUserID(r)
-
 	db := db.GetDB()
 	query := `
         SELECT DISTINCT category 
         FROM places 
-        WHERE user_id = $1 
         ORDER BY category
     `
 
-	rows, err := db.Query(query, userID)
+	rows, err := db.Query(query)
 	if err != nil {
 		utils.JSONError(w, http.StatusInternalServerError, "Failed to fetch categories")
 		return

@@ -29,6 +29,12 @@ func RatePlaceHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	db := db.GetDB()
+	var exists bool
+	err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM places WHERE id = $1)`, placeID).Scan(&exists)
+	if err != nil || !exists {
+		utils.JSONError(w, http.StatusNotFound, "Place not found")
+		return
+	}
 	query := `
         INSERT INTO ratings (place_id, user_id, rating, review)
         VALUES ($1, $2, $3, $4)
@@ -37,7 +43,7 @@ func RatePlaceHandler(w http.ResponseWriter, r *http.Request) {
         RETURNING id
     `
 	var ratingID int
-	err := db.QueryRow(query, placeID, userID, req.Rating, req.Review).Scan(&ratingID)
+	err = db.QueryRow(query, placeID, userID, req.Rating, req.Review).Scan(&ratingID)
 	if err != nil {
 		utils.JSONError(w, http.StatusInternalServerError, "Failed to save rating")
 		return
