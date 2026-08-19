@@ -21,7 +21,7 @@ const state = {
 // API HELPERS
 // ============================================
 
-const API_BASE = 'http://localhost:8081/api';
+const API_BASE = `${window.location.origin}/api`;
 
 async function apiRequest(endpoint, options = {}) {
     const headers = {

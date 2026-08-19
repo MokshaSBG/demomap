@@ -78,6 +78,7 @@ func GetPlacesHandler(w http.ResponseWriter, r *http.Request) {
 	utils.JSONResponse(w, http.StatusOK, places)
 }
 
+// backend/internal/handlers/places.go
 func CreatePlaceHandler(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r)
 
@@ -100,15 +101,46 @@ func CreatePlaceHandler(w http.ResponseWriter, r *http.Request) {
         RETURNING id
     `
 
-	var placeID int
+	var placeID int64
 	err := db.QueryRow(query,
 		userID, req.Name, req.Category, req.Description,
 		req.Address, req.Phone, req.Website,
 		req.Longitude, req.Latitude,
 	).Scan(&placeID)
+
 	if err != nil {
 		utils.JSONError(w, http.StatusInternalServerError, "Failed to create place")
 		return
+	}
+
+	// ✅ NEW: Sync to Fedratlas
+	if FedratlasClient != nil {
+		// Build GeoJSON feature from request
+		feature := models.GeoJSONFeature{
+			Type: "Feature",
+			Geometry: models.GeoJSONGeometry{
+				Type:        "Point",
+				Coordinates: []float64{req.Longitude, req.Latitude},
+			},
+			Properties: map[string]interface{}{
+				"name":        req.Name,
+				"category":    req.Category,
+				"description": req.Description,
+				"address":     req.Address,
+				"phone":       req.Phone,
+				"website":     req.Website,
+				"id":          placeID,
+				"user_id":     userID,
+			},
+		}
+		featureData, _ := json.Marshal(feature)
+		go FedratlasClient.OnFeatureChange(
+			placeID,
+			"Create",
+			featureData,
+			1,
+			"places",
+		)
 	}
 
 	utils.JSONResponse(w, http.StatusCreated, map[string]interface{}{
@@ -200,6 +232,11 @@ func UpdatePlaceHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	db := db.GetDB()
+
+	// Get current version
+	var currentVersion int
+	db.QueryRow("SELECT COALESCE(version, 1) FROM places WHERE id = $1", placeID).Scan(&currentVersion)
+
 	query := `
         UPDATE places
         SET 
@@ -216,6 +253,7 @@ func UpdatePlaceHandler(w http.ResponseWriter, r *http.Request) {
 		req.Longitude, req.Latitude,
 		placeID, userID,
 	)
+
 	if err != nil {
 		utils.JSONError(w, http.StatusInternalServerError, "Failed to update place")
 		return
@@ -225,6 +263,34 @@ func UpdatePlaceHandler(w http.ResponseWriter, r *http.Request) {
 	if rowsAffected == 0 {
 		utils.JSONError(w, http.StatusNotFound, "Place not found")
 		return
+	}
+
+	// ✅ NEW: Sync to Fedratlas
+	if FedratlasClient != nil {
+		feature := models.GeoJSONFeature{
+			Type: "Feature",
+			Geometry: models.GeoJSONGeometry{
+				Type:        "Point",
+				Coordinates: []float64{req.Longitude, req.Latitude},
+			},
+			Properties: map[string]interface{}{
+				"name":        req.Name,
+				"category":    req.Category,
+				"description": req.Description,
+				"address":     req.Address,
+				"phone":       req.Phone,
+				"website":     req.Website,
+				"id":          placeID,
+			},
+		}
+		featureData, _ := json.Marshal(feature)
+		go FedratlasClient.OnFeatureChange(
+			mustParseInt64(placeID),
+			"Update",
+			featureData,
+			int32(currentVersion+1),
+			"places",
+		)
 	}
 
 	utils.JSONResponse(w, http.StatusOK, map[string]string{
@@ -240,6 +306,7 @@ func DeletePlaceHandler(w http.ResponseWriter, r *http.Request) {
 	db := db.GetDB()
 	query := `DELETE FROM places WHERE id = $1 AND user_id = $2`
 	result, err := db.Exec(query, placeID, userID)
+
 	if err != nil {
 		utils.JSONError(w, http.StatusInternalServerError, "Failed to delete place")
 		return
@@ -249,6 +316,17 @@ func DeletePlaceHandler(w http.ResponseWriter, r *http.Request) {
 	if rowsAffected == 0 {
 		utils.JSONError(w, http.StatusNotFound, "Place not found")
 		return
+	}
+
+	// ✅ NEW: Sync to Fedratlas
+	if FedratlasClient != nil {
+		go FedratlasClient.OnFeatureChange(
+			mustParseInt64(placeID),
+			"Delete",
+			[]byte{},
+			0,
+			"places",
+		)
 	}
 
 	utils.JSONResponse(w, http.StatusOK, map[string]string{
@@ -349,4 +427,10 @@ func GetCategoriesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.JSONResponse(w, http.StatusOK, categories)
+}
+
+// backend/internal/handlers/places.go
+func mustParseInt64(s string) int64 {
+	val, _ := strconv.ParseInt(s, 10, 64)
+	return val
 }

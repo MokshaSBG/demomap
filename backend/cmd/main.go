@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"demomap/internal/db"
+	"demomap/internal/fedratlas"
 	"demomap/internal/handlers"
 	"demomap/internal/middleware"
 
@@ -26,6 +27,24 @@ func main() {
 	// Initialize db
 	db.InitDB()
 	defer db.GetDB().Close()
+
+	// ============================================
+	// ✅ Initialize Fedratlas Client
+	// ============================================
+	fedConfig := fedratlas.LoadConfig()
+	fedClient, err := fedratlas.NewClient(fedConfig)
+	if err != nil {
+		log.Printf("⚠️ Failed to connect to Fedratlas: %v", err)
+	} else {
+		log.Println("✅ Fedratlas client initialized")
+		defer fedClient.Close()
+		handlers.SetFedratlasClient(fedClient)
+
+		// Log server ID
+		if serverID, err := fedClient.GetServerID(); err == nil && serverID != "" {
+			log.Printf("🆔 Fedratlas Server ID: %s", serverID)
+		}
+	}
 
 	// Create uploads directory
 	os.MkdirAll("./uploads", 0755)
@@ -76,6 +95,11 @@ func main() {
 	router.HandleFunc("/collections/{collectionId}/items", handlers.OGCItemsHandler).Methods("GET")
 	router.HandleFunc("/collections/{collectionId}/items/{featureId}", handlers.OGCFeatureHandler).Methods("GET")
 
+	// Create/Update/Delete with Fedratlas sync
+	router.HandleFunc("/collections/{collectionId}/items", handlers.OGCCreateFeatureHandler).Methods("POST")
+	router.HandleFunc("/collections/{collectionId}/items/{featureId}", handlers.OGCUpdateFeatureHandler).Methods("PUT")
+	router.HandleFunc("/collections/{collectionId}/items/{featureId}", handlers.OGCDeleteFeatureHandler).Methods("DELETE")
+
 	// Enable CORS
 	handler := cors.New(cors.Options{
 		AllowedOrigins:   []string{"*"},
@@ -91,6 +115,13 @@ func main() {
 
 	log.Printf("🚀 Server starting on http://localhost:%s", port)
 	log.Printf("📱 Map available at http://localhost:%s", port)
+	log.Printf("🌐 OGC API available at http://localhost:%s/collections", port)
+	if fedClient != nil && fedConfig.Enabled {
+		log.Printf("🔗 Fedratlas sync ENABLED")
+	} else {
+		log.Printf("⏭️ Fedratlas sync DISABLED")
+	}
+
 	if err := http.ListenAndServe(":"+port, handler); err != nil {
 		log.Fatal(err)
 	}
